@@ -4,11 +4,13 @@ from kubernetes import client
 
 from subtract import subtract
 
+_skip_annotation_prefixes = ('kopf.zalando.org/', 'kubectl.kubernetes.io/')
+
 
 @kopf.on.create('kim.karolinska.se', 'v1', 'modifyclusterroles')
 @kopf.on.update('kim.karolinska.se', 'v1', 'modifyclusterroles')
 @kopf.on.resume('kim.karolinska.se', 'v1', 'modifyclusterroles')
-def handle_modify_cluster_role(spec, name, logger, **kwargs):
+def handle_modify_cluster_role(spec, name, meta, uid, logger, **kwargs):
     source_name = spec.get('clusterRole')
     remove_rules = spec.get('removeRules', [])
 
@@ -37,10 +39,29 @@ def handle_modify_cluster_role(spec, name, logger, **kwargs):
     except ValueError as e:
         raise kopf.PermanentError(str(e))
 
+    labels = dict(meta.get('labels') or {})
+    labels['app.kubernetes.io/managed-by'] = 'rbac-subtract'
+
+    annotations = {
+        k: v for k, v in (meta.get('annotations') or {}).items()
+        if not k.startswith(_skip_annotation_prefixes)
+    }
+
+    owner_ref = client.V1OwnerReference(
+        api_version='kim.karolinska.se/v1',
+        kind='ModifyClusterRole',
+        name=name,
+        uid=uid,
+        controller=True,
+        block_owner_deletion=True,
+    )
+
     target = client.V1ClusterRole(
         metadata=client.V1ObjectMeta(
             name=name,
-            labels={'app.kubernetes.io/managed-by': 'modifyclusterrole-controller'},
+            labels=labels,
+            annotations=annotations,
+            owner_references=[owner_ref],
         ),
         rules=result_rules,
         aggregation_rule=aggregate,
