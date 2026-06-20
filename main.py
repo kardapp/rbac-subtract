@@ -82,14 +82,3 @@ def handle_modify_cluster_role(spec, name, meta, uid, logger, **kwargs):
     return {'status': 'ok', 'rulesCount': len(result_rules)}
 
 
-@kopf.on.delete('kim.karolinska.se', 'v1', 'modifyclusterroles')
-def handle_delete(name, logger, **kwargs):
-    api = client.RbacAuthorizationV1Api()
-    try:
-        api.delete_cluster_role(name=name)
-        logger.info(f"Deleted ClusterRole '{name}'")
-    except kubernetes.client.exceptions.ApiException as e:
-        if e.status == 404:
-            logger.info(f"ClusterRole '{name}' already deleted")
-        else:
-            raise
