@@ -17,6 +17,9 @@ spec:
       openAPIV3Schema:
         type: object
         required: [spec]
+        x-kubernetes-validations:
+        - rule: "self.spec.clusterRole != self.metadata.name"
+          message: "spec.clusterRole cannot be the same as metadata.name — this would overwrite the source ClusterRole"
         properties:
           spec:
             type: object
@@ -24,9 +27,11 @@ spec:
             properties:
               clusterRole:
                 type: string
+                minLength: 1
                 description: Name of the source ClusterRole to copy from
               removeRules:
                 type: array
+                minItems: 1
                 description: Rules to subtract from the source ClusterRole
                 items:
                   type: object
@@ -34,14 +39,17 @@ spec:
                   properties:
                     apiGroups:
                       type: array
+                      minItems: 1
                       items:
                         type: string
                     resources:
                       type: array
+                      minItems: 1
                       items:
                         type: string
                     verbs:
                       type: array
+                      minItems: 1
                       items:
                         type: string
           status:
