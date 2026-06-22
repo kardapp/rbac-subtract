@@ -344,6 +344,79 @@ def test_subtract_simple_yaml_scenario():
     assert apps_rule['verbs'] == ['create', 'delete', 'deletecollection', 'patch', 'update']
 
 
+def test_subtract_edit_yaml_scenario():
+    """End-to-end test matching examples/my-edit.yaml against the edit ClusterRole."""
+    source = [
+        {
+            'apiGroups': ['apps'],
+            'resources': [
+                'daemonsets', 'deployments', 'deployments/rollback',
+                'deployments/scale', 'replicasets', 'replicasets/scale',
+                'statefulsets', 'statefulsets/scale',
+            ],
+            'verbs': ['create', 'delete', 'deletecollection', 'patch', 'update'],
+        },
+        {
+            'apiGroups': ['extensions'],
+            'resources': [
+                'daemonsets', 'deployments', 'deployments/rollback',
+                'deployments/scale', 'ingresses', 'networkpolicies',
+                'replicasets', 'replicasets/scale', 'replicationcontrollers/scale',
+            ],
+            'verbs': ['create', 'delete', 'deletecollection', 'patch', 'update'],
+        },
+        {
+            'apiGroups': ['networking.k8s.io'],
+            'resources': ['ingresses', 'networkpolicies'],
+            'verbs': ['create', 'delete', 'deletecollection', 'patch', 'update'],
+        },
+    ]
+    remove = [
+        {
+            'apiGroups': ['apps'],
+            'resources': ['daemonsets'],
+            'verbs': ['create'],
+        },
+        {
+            'apiGroups': ['networking.k8s.io'],
+            'resources': ['ingresses'],
+            'verbs': ['create', 'delete', 'deletecollection', 'patch', 'update'],
+        },
+    ]
+    result = subtract(source, remove)
+    assert len(result) == 4
+
+    by_api = {r['apiGroups'][0]: r for r in result}
+
+    # apps: daemonsets lost 'create', split from other 7 resources
+    apps_rules = [r for r in result if r['apiGroups'] == ['apps']]
+    assert len(apps_rules) == 2
+
+    daemonset_rule = [r for r in apps_rules if r['resources'] == ['daemonsets']]
+    assert len(daemonset_rule) == 1
+    assert daemonset_rule[0]['verbs'] == ['delete', 'deletecollection', 'patch', 'update']
+
+    other_apps = [r for r in apps_rules if r['resources'] != ['daemonsets']]
+    assert len(other_apps) == 1
+    assert set(other_apps[0]['resources']) == {
+        'deployments', 'deployments/rollback', 'deployments/scale',
+        'replicasets', 'replicasets/scale', 'statefulsets', 'statefulsets/scale',
+    }
+    assert other_apps[0]['verbs'] == ['create', 'delete', 'deletecollection', 'patch', 'update']
+
+    # extensions: completely unaffected, all 9 resources stay merged
+    assert by_api['extensions']['resources'] == [
+        'daemonsets', 'deployments', 'deployments/rollback',
+        'deployments/scale', 'ingresses', 'networkpolicies',
+        'replicasets', 'replicasets/scale', 'replicationcontrollers/scale',
+    ]
+    assert by_api['extensions']['verbs'] == ['create', 'delete', 'deletecollection', 'patch', 'update']
+
+    # networking.k8s.io: ingresses removed entirely, only networkpolicies remains
+    assert by_api['networking.k8s.io']['resources'] == ['networkpolicies']
+    assert by_api['networking.k8s.io']['verbs'] == ['create', 'delete', 'deletecollection', 'patch', 'update']
+
+
 # --- wildcard removal ---
 
 def test_remove_verb_wildcard():

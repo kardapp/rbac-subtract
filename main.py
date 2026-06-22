@@ -80,7 +80,6 @@ def handle_modify_cluster_role(spec, name, meta, uid, logger, **kwargs):
 
     serialized = client.ApiClient().sanitize_for_serialization(source_role)
     source_rules = serialized.get('rules', [])
-    aggregate = serialized.get('aggregationRule')
 
     source_rules = _expand_wildcards(source_rules, logger)
 
@@ -118,7 +117,6 @@ def handle_modify_cluster_role(spec, name, meta, uid, logger, **kwargs):
             owner_references=[owner_ref],
         ),
         rules=result_rules,
-        aggregation_rule=aggregate,
     )
 
     try:
