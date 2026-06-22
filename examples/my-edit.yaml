@@ -3,6 +3,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: kim-postgres
+  annotations:
+    openshift.io/description: |
+      Something that we want to give developers access to.
+      Add something that dosent exist in kind by default so its easy to distinguish
   labels:
     kim.rbac/aggregate-to-kim-developer: "true"
 rules:
@@ -15,19 +19,33 @@ rules:
     - list
     - watch
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kim-developer
+  annotations:
+    openshift.io/description: |
+      We use this as a example to remove stuff from view that could normaly not be removed
+aggregationRule:
+  clusterRoleSelectors:
+  - matchLabels:
+      rbac.authorization.k8s.io/aggregate-to-view: "true"
+  - matchLabels:
+      kim.rbac/aggregate-to-kim-developer: "true"
+---
 apiVersion: kim.karolinska.se/v1
 kind: ModifyClusterRole
 metadata:
-  name: my-edit
+  name: kim-developer-modifed
 spec:
-  clusterRole: edit
+  clusterRole: kim-developer
   removeRules:
   - apiGroups:
     - apps
     resources:
     - daemonsets
     verbs:
-    - create
+    - '*'
   - apiGroups:
     - networking.k8s.io
     resources:
