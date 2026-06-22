@@ -74,9 +74,37 @@ def test_regroup_separate_resources():
         Permission('apps', 'deployments', 'get'),
         Permission('apps', 'statefulsets', 'get'),
     })
+    assert len(result) == 1
+    assert result[0]['apiGroups'] == ['apps']
+    assert set(result[0]['resources']) == {'deployments', 'statefulsets'}
+    assert result[0]['verbs'] == ['get']
+
+
+def test_regroup_merges_resources_with_same_verbs():
+    result = regroup({
+        Permission('apps', 'deployments', 'get'),
+        Permission('apps', 'deployments', 'list'),
+        Permission('apps', 'statefulsets', 'get'),
+        Permission('apps', 'statefulsets', 'list'),
+    })
+    assert len(result) == 1
+    assert result[0]['apiGroups'] == ['apps']
+    assert set(result[0]['resources']) == {'deployments', 'statefulsets'}
+    assert result[0]['verbs'] == ['get', 'list']
+
+
+def test_regroup_keeps_separate_when_verbs_differ():
+    result = regroup({
+        Permission('apps', 'deployments', 'get'),
+        Permission('apps', 'statefulsets', 'get'),
+        Permission('apps', 'statefulsets', 'list'),
+    })
     assert len(result) == 2
-    verbs_sets = {frozenset(r['verbs']) for r in result}
-    assert verbs_sets == {frozenset({'get'})}
+    by_resource = {frozenset(r['resources']): r['verbs'] for r in result}
+    assert by_resource == {
+        frozenset({'deployments'}): ['get'],
+        frozenset({'statefulsets'}): ['get', 'list'],
+    }
 
 
 def test_regroup_empty():
@@ -263,6 +291,57 @@ def test_subtract_partial_api_group_match():
         'resources': ['deployments'],
         'verbs': ['get'],
     }]
+
+
+def test_subtract_simple_yaml_scenario():
+    """End-to-end test matching examples/simple.yaml."""
+    source = [
+        {
+            'apiGroups': ['networking.k8s.io'],
+            'resources': ['ingresses', 'networkpolicies'],
+            'verbs': ['create', 'delete', 'deletecollection', 'patch', 'update'],
+        },
+        {
+            'apiGroups': ['apps'],
+            'resources': [
+                'daemonsets', 'deployments', 'deployments/rollback',
+                'deployments/scale', 'replicasets', 'replicasets/scale',
+                'statefulsets', 'statefulsets/scale',
+            ],
+            'verbs': ['create', 'delete', 'deletecollection', 'patch', 'update'],
+        },
+    ]
+    remove = [
+        {
+            'apiGroups': ['networking.k8s.io'],
+            'resources': ['ingresses'],
+            'verbs': ['*'],
+        },
+        {
+            'apiGroups': ['networking.k8s.io'],
+            'resources': ['networkpolicies'],
+            'verbs': ['delete', 'deletecollection', 'patch', 'update'],
+        },
+        {
+            'apiGroups': ['apps'],
+            'resources': ['daemonsets'],
+            'verbs': ['*'],
+        },
+    ]
+    result = subtract(source, remove)
+    assert len(result) == 2
+
+    by_api = {r['apiGroups'][0]: r for r in result}
+
+    assert by_api['networking.k8s.io']['resources'] == ['networkpolicies']
+    assert by_api['networking.k8s.io']['verbs'] == ['create']
+
+    apps_rule = by_api['apps']
+    assert set(apps_rule['resources']) == {
+        'deployments', 'deployments/rollback', 'deployments/scale',
+        'replicasets', 'replicasets/scale', 'statefulsets', 'statefulsets/scale',
+    }
+    assert apps_rule['verbs'] == ['create', 'delete', 'deletecollection', 'patch', 'update']
 
 
 # --- wildcard removal ---

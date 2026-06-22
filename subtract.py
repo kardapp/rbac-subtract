@@ -30,18 +30,25 @@ def flatten(rules: List[Dict]) -> Set[Permission]:
 def regroup(permissions: Set[Permission]) -> List[Dict]:
     """Regroup (apiGroup, resource, verb) tuples back into PolicyRule dicts.
 
-    Groups by (apiGroup, resource) and collects verbs.
+    Groups by (apiGroup, resource) to collect verbs, then merges rules
+    that share the same apiGroup and verbs into a single rule with
+    combined resources.
     """
     groups: dict[tuple[str, str], set[str]] = defaultdict(set)
     for p in permissions:
         groups[(p.api_group, p.resource)].add(p.verb)
 
+    merged: dict[tuple[str, tuple[str, ...]], set[str]] = defaultdict(set)
+    for (ag, r), verbs in groups.items():
+        verb_tuple = tuple(sorted(verbs))
+        merged[(ag, verb_tuple)].add(r)
+
     result: List[Dict] = []
-    for (ag, r), verbs in sorted(groups.items()):
+    for (ag, verb_tuple), resources in sorted(merged.items()):
         result.append({
             'apiGroups': [ag],
-            'resources': [r],
-            'verbs': sorted(verbs),
+            'resources': sorted(resources),
+            'verbs': list(verb_tuple),
         })
     return result
 
