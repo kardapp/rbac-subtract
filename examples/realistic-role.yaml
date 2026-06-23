@@ -25,7 +25,7 @@ metadata:
   name: kim-developer
   annotations:
     openshift.io/description: |
-      We use this as a example to remove stuff from view that could normaly not be removed
+      We use this as an example ClusterRole to demonstrate removing permissions inherited from the view role that normally cannot be removed
 aggregationRule:
   clusterRoleSelectors:
   - matchLabels:
@@ -37,6 +37,9 @@ apiVersion: kim.karolinska.se/v1
 kind: ModifyClusterRole
 metadata:
   name: kim-developer-modifed
+  annotations:
+    openshift.io/description: |
+      Here we remove daemonsets because it "to unsafe". And we only allow viewing ingresses (if it would had those permissons)
 spec:
   clusterRole: kim-developer
   removeRules:
