@@ -31,6 +31,15 @@ rules:
   - deletecollection
   - patch
   - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+    - create
+    - get
+    - list
+    - watch
 ---
 apiVersion: kim.karolinska.se/v1
 kind: ModifyClusterRole
