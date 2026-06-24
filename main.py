@@ -1,3 +1,4 @@
+import os
 import kopf
 import kubernetes
 from kubernetes import client
@@ -7,6 +8,7 @@ from kubernetes.dynamic.discovery import EagerDiscoverer
 from subtract import subtract
 
 _skip_annotation_prefixes = ('kopf.zalando.org/', 'kubectl.kubernetes.io/')
+_reconcile_interval = int(os.environ.get("RECONCILE_INTERVAL", "30"))
 
 def _expand_wildcards(rules, logger):
     dyn = DynamicClient(client.ApiClient(), discoverer=EagerDiscoverer)
@@ -25,15 +27,22 @@ def _expand_wildcards(rules, logger):
                 "source ClusterRole contains '*' in apiGroups — not supported"
             )
 
+        _verb_cache = {}
+
         if '*' in resources:
             resource_names = []
-            for ag in api_groups:
-                group = '' if ag == '' else ag
-                discovered = dyn.resources.search(group=group)
-                names = [r.name for r in discovered]
+            for apiGroup in api_groups:
+                discovered = dyn.resources.search(group=apiGroup)
+                names = []
+                for r in discovered:
+                    if not hasattr(r, 'verbs'):
+                        continue
+                    names.append(r.name)
+                    if r.verbs:
+                        _verb_cache[r.name] = r.verbs
                 logger.info(
                     "Expanding resources: ['*'] in apiGroup '%s' to %d resources",
-                    ag, len(names),
+                    apiGroup, len(names),
                 )
                 resource_names.extend(names)
             resources = sorted(set(resource_names))
@@ -41,11 +50,11 @@ def _expand_wildcards(rules, logger):
         if '*' in verbs:
             new_verbs = set()
             for resource_name in resources:
-                resource_verbs = None
-                for r in dyn.resources:
-                    if r.name == resource_name:
-                        resource_verbs = r.verbs
-                        break
+                resource_verbs = _verb_cache.get(resource_name)
+                if resource_verbs is None:
+                    found = dyn.resources.search(name=resource_name)
+                    if found:
+                        resource_verbs = found[0].verbs
                 if not resource_verbs:
                     raise kopf.PermanentError(
                         f"Resource '{resource_name}' not found in discovery API — "
@@ -58,7 +67,7 @@ def _expand_wildcards(rules, logger):
         expanded.append({**rule, 'resources': resources, 'verbs': verbs})
     return expanded
 
-
+@kopf.timer('kim.karolinska.se', 'v1', 'modifyclusterroles' , interval=_reconcile_interval, initial_delay=15.0)
 @kopf.on.create('kim.karolinska.se', 'v1', 'modifyclusterroles')
 @kopf.on.update('kim.karolinska.se', 'v1', 'modifyclusterroles')
 @kopf.on.resume('kim.karolinska.se', 'v1', 'modifyclusterroles')
@@ -134,3 +143,4 @@ def handle_modify_cluster_role(spec, name, meta, uid, logger, **kwargs):
     return {'status': 'ok', 'rulesCount': len(result_rules)}
 
 
+#def reconcile_modify_cluster_role(spec, name, meta, uid, logger, **kwargs):
