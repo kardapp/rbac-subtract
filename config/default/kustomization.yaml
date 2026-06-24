@@ -1,0 +1,10 @@
+# Adds namespace to all resources.
+namespace: rbac-subtract-system
+
+# Value of this field is prepended to the names of all resources.
+namePrefix: rbac-subtract-
+
+resources:
+- ../crd
+- ../rbac
+- ../manager

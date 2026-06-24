@@ -1,6 +1,8 @@
 # RBAC Subtract
 
-A Kubernetes controller that fills a gap when a ClusterRole is almost perfect except for a few rules you'd like to remove. Kubernetes has no native way to subtract permissions from an existing ClusterRole, this does it for you :)
+A Kubernetes controller that fills a gap when a ClusterRole is almost perfect except for a few rules you'd like to remove. Kubernetes has no native way to subtract permissions from an existing ClusterRole — this does it for you.
+
+Built in Go with [Kubebuilder](https://github.com/kubernetes-sigs/kubebuilder) v4 and [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime).
 
 ## How to use
 
@@ -195,7 +197,21 @@ The target ClusterRole is owned by the `ModifyClusterRole` custom resource via a
 
 Labels from the `ModifyClusterRole` custom resource propagate to the target ClusterRole. The label `app.kubernetes.io/managed-by: rbac-subtract` is always present.
 
-Annotations also propagate, excluding system annotations from Kopf (`kopf.zalando.org/*`) and kubectl (`kubectl.kubernetes.io/*`).
+Annotations also propagate, excluding system annotations from kubectl (`kubectl.kubernetes.io/*`).
+
+## Development
+
+```bash
+make test          # Run all tests (unit + envtest integration)
+make build         # Build manager binary to bin/manager
+make run           # Run controller locally against current kubeconfig
+make docker-build  # Build container image
+make deploy        # Deploy CRD + controller to cluster
+make manifests     # Regenerate CRD and RBAC manifests from markers
+make generate      # Regenerate deepcopy code
+```
+
+Requires Go >= 1.25.
 
 ## Limitations
 
@@ -206,7 +222,7 @@ The source ClusterRole may contain `"*"` in `resources` and `verbs`. These are e
 - `resources: ["*"]` → expanded to all known resource names in the rule's API groups.
 - `verbs: ["*"]` → expanded to the actual verbs each resource supports (e.g., `get`, `list`, `create`, `delete`). If a resource is not found in the discovery API (e.g., a stale role referencing a removed CRD), the controller raises a permanent error.
 
-Expansion snapshots the currently-known resources. CRDs installed after reconciliation are not picked up until the next reconciliation (the controller re-reconciles on changes to the source ClusterRole or the `ModifyClusterRole` CR).
+Expansion snapshots the currently-known resources. CRDs installed after reconciliation are not picked up until the next reconciliation (the controller re-reconciles periodically via `REQUEUE_INTERVAL`, default 60s).
 
 `apiGroups: ["*"]` is rejected with a permanent error — it is too broad to expand meaningfully.
 
