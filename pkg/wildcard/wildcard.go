@@ -2,8 +2,8 @@ package wildcard
 
 import (
 	"errors"
-	"sort"
 	"slices"
+	"sort"
 
 	"github.com/go-logr/logr"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -14,8 +14,8 @@ import (
 func ExpandWildcards(discoveryClient discovery.DiscoveryInterface, rules []rbacv1.PolicyRule, log logr.Logger) ([]rbacv1.PolicyRule, bool, error) {
 	log = log.WithName("wildcard")
 
-	// Discover apiGroups, Resources and Verbs for the rules 
-	// ----------------------------------------------------- 
+	// Discover apiGroups, Resources and Verbs for the rules
+	// -----------------------------------------------------
 	uniqueApiGroups := collectApiGroups(rules)
 	apiGroupVersions, err := fetchApiGroupVersions(discoveryClient, uniqueApiGroups)
 	if err != nil {
@@ -26,7 +26,7 @@ func ExpandWildcards(discoveryClient discovery.DiscoveryInterface, rules []rbacv
 	if err != nil {
 		return nil, false, err
 	}
-	// ----------------------------------------------------- 
+	// -----------------------------------------------------
 
 	hadWildcardAPI := false
 	var expanded []rbacv1.PolicyRule
@@ -56,7 +56,7 @@ func ExpandWildcards(discoveryClient discovery.DiscoveryInterface, rules []rbacv
 			expanded = append(expanded, rule)
 			continue
 		}
-		
+
 		resources := rule.Resources
 		verbs := rule.Verbs
 
@@ -84,7 +84,6 @@ func ExpandWildcards(discoveryClient discovery.DiscoveryInterface, rules []rbacv
 	return expanded, hadWildcardAPI, nil
 }
 
-
 func collectApiGroups(rules []rbacv1.PolicyRule) []string {
 	var all []string
 	for _, rule := range rules {
@@ -96,7 +95,6 @@ func collectApiGroups(rules []rbacv1.PolicyRule) []string {
 	}
 	return dedupeSorted(nil, all)
 }
-
 
 func fetchApiGroupVersions(discoveryClient discovery.DiscoveryInterface, apiGroups []string) (map[string][]string, error) {
 	// fetchApiGroupVersions resolves the apiGroups and its versions returning a list needed for resolving resources
