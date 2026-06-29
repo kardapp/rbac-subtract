@@ -43,6 +43,8 @@ type ModifyClusterRoleReconciler struct {
 // +kubebuilder:rbac:groups=kim.karolinska.se,resources=modifyclusterroles,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=kim.karolinska.se,resources=modifyclusterroles/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
+
 
 // Reconcile processes a ModifyClusterRole and maintains the target ClusterRole.
 func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
