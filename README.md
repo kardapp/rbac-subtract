@@ -199,6 +199,16 @@ Labels from the `ModifyClusterRole` custom resource propagate to the target Clus
 
 Annotations also propagate, excluding system annotations from kubectl (`kubectl.kubernetes.io/*`).
 
+## Deployment prerequisites
+
+The controller's service account (`rbac-subtract-controller-manager`) needs additional RBAC permissions beyond what kubebuilder auto-scaffolds:
+
+- **`escalate` on `clusterroles`** — Required to create ClusterRoles whose rules include permissions the service account does not hold. Without it, Kubernetes RBAC escalation prevention rejects the request.
+- **Leases in `coordination.k8s.io`** — Required for leader election when `--leader-elect` is enabled (default). Needs `get;list;watch;create;update;patch;delete`.
+- **Events** — Recommended for recording reconcile and leader election events. Needs `create;patch` on `events` in the core API group.
+
+All RBAC rules are managed via kubebuilder markers (`// +kubebuilder:rbac:...`) in Go source files and regenerated with `make manifests`.
+
 ## Development
 
 ```bash
@@ -224,7 +234,7 @@ The source ClusterRole may contain `"*"` in `resources` and `verbs`. These are e
 
 Expansion snapshots the currently-known resources. CRDs installed after reconciliation are not picked up until the next reconciliation (the controller re-reconciles periodically via `REQUEUE_INTERVAL`, default 60s).
 
-`apiGroups: ["*"]` is rejected with a permanent error — it is too broad to expand meaningfully.
+`apiGroups: ["*"]` — rules with a wildcard API group are passed through unchanged. The controller adds the annotation `rbac-subtract.kim.karolinska.se/api-group-wildcard` to the target ClusterRole instead of rejecting.
 
 Rules with `resourceNames` pass through unchanged regardless of wildcards.
 

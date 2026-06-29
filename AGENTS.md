@@ -56,10 +56,11 @@ make generate         # Regenerate deepcopy code
 - `pkg/subtract/` has no K8s client imports — pure logic, testable in isolation
 - New features add unit tests for `pkg/subtract/` first, then wire into the controller
 - K8s manifests are generated from kubebuilder markers — edit markers, not YAML
+- RBAC markers are kept in `internal/controller/modifyclusterrole_controller.go` alongside the reconciler they serve
 - CRD validation uses kubebuilder CEL markers on the Go types
 
 ## Limitations
 
-- Source ClusterRole must not contain `*` in `apiGroups` (rejected with error)
+- Source ClusterRole rules with `*` in `apiGroups` pass through unchanged with an annotation (`rbac-subtract.kim.karolinska.se/api-group-wildcard`) on the target ClusterRole
 - Rules with `resourceNames` pass through unchanged (safe default)
 - `nonResourceURLs` not supported (dropped from output)
