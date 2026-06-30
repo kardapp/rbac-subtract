@@ -33,86 +33,83 @@ func Flatten(rules []rbacv1.PolicyRule) map[Permission]struct{} {
 	return result
 }
 
-// Regroup converts a set of Permission tuples back into PolicyRule objects.
-// Groups by (apiGroup, resource) to collect verbs, then merges rules that
-// share the same apiGroup and verbs into a single rule with combined resources.
+// A hard part to cognitivly understand here is that the key is a struct
 func Regroup(permissions map[Permission]struct{}) []rbacv1.PolicyRule {
-	// Step 1: group by (apiGroup, resource) -> set of verbs
+	//    Step 1: collect verbs per resource
+	//   {apiGroup, resource, verb} tuples  →  groups[(apiGroup,resource)] = {verb, ...}
+	//
+	//   Example: {(apps,deployments,get), (apps,deployments,list), (apps,statefulsets,get), (apps,statefulsets,list)}
+	//         →  {apps/deployments: {get,list}, apps/statefulsets: {get,list}}
 	type agResourceKey struct {
 		apiGroup string
 		resource string
 	}
-	groups := make(map[agResourceKey]map[string]struct{})
+	type verbSet map[string]struct{}
+
+	groups := make(map[agResourceKey]verbSet)
 	for permission := range permissions {
 		key := agResourceKey{permission.APIGroup, permission.Resource}
 		if groups[key] == nil {
-			groups[key] = make(map[string]struct{})
+			groups[key] = make(verbSet)
 		}
 		groups[key][permission.Verb] = struct{}{}
 	}
 
-	// Step 2: merge by (apiGroup, sortedVerbTuple) -> set of resources
+	//   Step 2: merge resources that share identical verbs
+	//   groups[(apiGroup,resource)] = {verb, ...}  →  merged[(apiGroup, "verb1,verb2")] = {resource, ...}
+	//
+	//   Example: {apps/deployments: {get,list}, apps/statefulsets: {get,list}}
+	//         →  {(apps,"get,list"): {deployments, statefulsets}}
 	type agVerbsKey struct {
 		apiGroup string
-		verbs    string // comma-joined sorted verbs, used as a stable key
+		verbs    string
 	}
-	merged := make(map[agVerbsKey]map[string]struct{})
+	type resourceSet map[string]struct{}
+
+	merged := make(map[agVerbsKey]resourceSet)
 	for key, verbSet := range groups {
 		sortedVerbs := slices.Sorted(maps.Keys(verbSet))
 		verbKey := strings.Join(sortedVerbs, ",")
 		agv := agVerbsKey{key.apiGroup, verbKey}
 		if merged[agv] == nil {
-			merged[agv] = make(map[string]struct{})
+			merged[agv] = make(resourceSet)
 		}
 		merged[agv][key.resource] = struct{}{}
 	}
 
-	// Step 3: build sorted result
-	type ruleSpec struct {
-		apiGroup  string
-		resources []string
-		verbs     []string
-	}
-
-	var specs []ruleSpec
+	//   Step 3: convert to sorted PolicyRules
+	//   merged[(apiGroup, "verb1,verb2")] = {resource, ...}  →  []PolicyRule
+	var rules []rbacv1.PolicyRule
 	for key, resourceSet := range merged {
 		verbList := strings.Split(key.verbs, ",")
 		if key.verbs == "" {
 			verbList = nil
 		}
-		specs = append(specs, ruleSpec{
-			apiGroup:  key.apiGroup,
-			resources: slices.Sorted(maps.Keys(resourceSet)),
-			verbs:     verbList,
+		rules = append(rules, rbacv1.PolicyRule{
+			APIGroups: []string{key.apiGroup},
+			Resources: slices.Sorted(maps.Keys(resourceSet)),
+			Verbs:     verbList,
 		})
 	}
 
-	sort.Slice(specs, func(i, j int) bool {
-		if specs[i].apiGroup != specs[j].apiGroup {
-			return specs[i].apiGroup < specs[j].apiGroup
+	sort.Slice(rules, func(i, j int) bool {
+		if rules[i].APIGroups[0] != rules[j].APIGroups[0] {
+			return rules[i].APIGroups[0] < rules[j].APIGroups[0]
 		}
-		return strings.Join(specs[i].verbs, ",") < strings.Join(specs[j].verbs, ",")
+		return strings.Join(rules[i].Verbs, ",") < strings.Join(rules[j].Verbs, ",")
 	})
 
-	result := make([]rbacv1.PolicyRule, 0, len(specs))
-	for _, spec := range specs {
-		result = append(result, rbacv1.PolicyRule{
-			APIGroups: []string{spec.apiGroup},
-			Resources: spec.resources,
-			Verbs:     spec.verbs,
-		})
-	}
-	return result
+	return rules
 }
 
 // Subtract removes removeRules from sourceRules, returning the resulting rules.
-// Source rules with ResourceNames or '*' in apiGroups pass through unchanged.
 func Subtract(sourceRules, removeRules []rbacv1.PolicyRule, logger logr.Logger) ([]rbacv1.PolicyRule, error) {
 
 	log := logger.WithName("subtract")
 
 	var passThrough []rbacv1.PolicyRule
 	var concrete []rbacv1.PolicyRule
+	// Source rules with ResourceNames or '*' in apiGroups pass through unchanged.
 	for _, rule := range sourceRules {
 		if len(rule.ResourceNames) > 0 || hasWildcard(rule.APIGroups) {
 			passThrough = append(passThrough, rule)
