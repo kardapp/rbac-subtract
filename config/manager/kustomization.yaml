@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/timpa0130/rbac-subtract
-  newTag: v1
+  newTag: latest
