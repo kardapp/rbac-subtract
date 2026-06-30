@@ -40,15 +40,15 @@ func Regroup(permissions map[Permission]struct{}) []rbacv1.PolicyRule {
 	//
 	//   Example: {(apps,deployments,get), (apps,deployments,list), (apps,statefulsets,get), (apps,statefulsets,list)}
 	//         →  {apps/deployments: {get,list}, apps/statefulsets: {get,list}}
-	type agResourceKey struct {
+	type resourceGroup struct {
 		apiGroup string
 		resource string
 	}
 	type verbSet map[string]struct{}
 
-	groups := make(map[agResourceKey]verbSet)
+	groups := make(map[resourceGroup]verbSet)
 	for permission := range permissions {
-		key := agResourceKey{permission.APIGroup, permission.Resource}
+		key := resourceGroup{permission.APIGroup, permission.Resource}
 		if groups[key] == nil {
 			groups[key] = make(verbSet)
 		}
@@ -60,21 +60,21 @@ func Regroup(permissions map[Permission]struct{}) []rbacv1.PolicyRule {
 	//
 	//   Example: {apps/deployments: {get,list}, apps/statefulsets: {get,list}}
 	//         →  {(apps,"get,list"): {deployments, statefulsets}}
-	type agVerbsKey struct {
+	type verbGroup struct {
 		apiGroup string
 		verbs    string
 	}
 	type resourceSet map[string]struct{}
 
-	merged := make(map[agVerbsKey]resourceSet)
+	merged := make(map[verbGroup]resourceSet)
 	for key, verbSet := range groups {
 		sortedVerbs := slices.Sorted(maps.Keys(verbSet))
 		verbKey := strings.Join(sortedVerbs, ",")
-		agv := agVerbsKey{key.apiGroup, verbKey}
-		if merged[agv] == nil {
-			merged[agv] = make(resourceSet)
+		mergedKey := verbGroup{key.apiGroup, verbKey}
+		if merged[mergedKey] == nil {
+			merged[mergedKey] = make(resourceSet)
 		}
-		merged[agv][key.resource] = struct{}{}
+		merged[mergedKey][key.resource] = struct{}{}
 	}
 
 	//   Step 3: convert to sorted PolicyRules
@@ -143,25 +143,25 @@ func Subtract(sourceRules, removeRules []rbacv1.PolicyRule, logger logr.Logger) 
 	log.V(1).Info("flattened", "sourceCount", len(source), "removeCount", len(removeFlat))
 
 	remaining := make(map[Permission]struct{})
-	// removed tracks which tuples were matched (for logging only)
+	// Removed tracks which tuples were matched (for logging only)
 	type removal struct {
 		src, pattern Permission
 	}
 	var removedTuples []removal
 
-	for perm := range source {
+	for permission := range source {
 		var matching *Permission
 		for pattern := range removeFlat {
-			if Matches(perm, pattern) {
+			if Matches(permission, pattern) {
 				p := pattern
 				matching = &p
 				break
 			}
 		}
 		if matching != nil {
-			removedTuples = append(removedTuples, removal{perm, *matching})
+			removedTuples = append(removedTuples, removal{permission, *matching})
 		} else {
-			remaining[perm] = struct{}{}
+			remaining[permission] = struct{}{}
 		}
 	}
 

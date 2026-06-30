@@ -52,7 +52,7 @@ make generate         # Regenerate deepcopy code
 ## Conventions
 
 - Go >= 1.25, kubebuilder v4, controller-runtime v0.24
-- Use descriptive variable names — no single-letter names (`gv`, `r`, `v`, `ag`). Loop variables should reflect what they iterate over (`resource`, `group`, `version`, `apiGroup`).
+- Use descriptive variable names — no single-letter names (`gv`, `r`, `v`, `ag`). Loop variables should reflect what they iterate over (`resource`, `group`, `version`, `apiGroup`). Avoid ambiguous abbreviations as prefixes (`ag` for apiGroup); spell them out or pick a full-word noun (`resourceGroup` over `agResourceKey`).
 - `pkg/subtract/` has no K8s client imports — pure logic, testable in isolation
 - New features add unit tests for `pkg/subtract/` first, then wire into the controller
 - K8s manifests are generated from kubebuilder markers — edit markers, not YAML
