@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/discovery"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kimv1 "github.com/timpa0130/rbac-subtract/api/v1"
@@ -46,7 +47,6 @@ type ModifyClusterRoleReconciler struct {
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
-
 // Reconcile processes a ModifyClusterRole and maintains the target ClusterRole.
 func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -60,10 +60,11 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	sourceName := cr.Spec.ClusterRole
-	log.Info("Reading source ClusterRole", "sourceName", sourceName)
+	// Santitize rules
+	// ---------------
+	log.Info("Reading source ClusterRole", "sourceName", cr.Spec.ClusterRole)
 	var sourceRole rbacv1.ClusterRole
-	if err := r.Get(ctx, client.ObjectKey{Name: sourceName}, &sourceRole); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Name: cr.Spec.ClusterRole}, &sourceRole); err != nil {
 		if errors.IsNotFound(err) {
 			log.Error(err, "Source ClusterRole not found")
 			return ctrl.Result{}, nil
@@ -71,15 +72,14 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	sourceRules := sourceRole.Rules
 	log.Info("Expanding wildcards from the source ClusterRole")
-	expandedRules, hadWildcardAPI, err := wildcard.ExpandWildcards(r.Discovery, sourceRules, log)
+	expandedRules, hadWildcardAPI, err := wildcard.ExpandWildcards(r.Discovery, sourceRole.Rules, log)
 	if err != nil {
 		log.Error(err, "Failed to expand wildcards")
 		return ctrl.Result{}, nil
 	}
 
-	// Because we created a custom type we need to convert it to a rbacv1.PolicyRule
+	// Because we created a custom type we need to make it to a rbacv1.PolicyRule
 	removeRules := make([]rbacv1.PolicyRule, len(cr.Spec.RemoveRules))
 	for i, rr := range cr.Spec.RemoveRules {
 		removeRules[i] = rbacv1.PolicyRule{
@@ -88,18 +88,18 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			Verbs:     rr.Verbs,
 		}
 	}
-
-	log.Info("subtracting rules",
-		"sourceCount", len(expandedRules),
-		"removeCount", len(removeRules),
-	)
-
-	resultRules, err := subtract.Subtract(expandedRules, removeRules, log)
+	
+	log.Info("subtracting rules", "sourceCount", len(expandedRules), "removeCount", len(removeRules),)
+	resultingRules, err := subtract.Subtract(expandedRules, removeRules, log)
 	if err != nil {
 		log.Error(err, "subtraction failed")
 		return ctrl.Result{}, nil
 	}
+	// ---------------
 
+
+	// Labels and annotations
+	// ----------------------
 	labels := cr.Labels
 	if labels == nil {
 		labels = make(map[string]string)
@@ -113,52 +113,34 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 	}
 	if hadWildcardAPI {
-		annotations["rbac-subtract.kim.karolinska.se/api-group-wildcard"] = "source ClusterRole contains '*' in apiGroups — subtraction skipped for those rules"
+		annotations["rbac-subtract.kim.karolinska.se/api-group-wildcard"] = "source ClusterRole contains '*' in apiGroups — subtraction may not work as expected"
 	}
-
-	ownerRef := metav1.OwnerReference{
-		APIVersion:         "kim.karolinska.se/v1",
-		Kind:               "ModifyClusterRole",
-		Name:               cr.Name,
-		UID:                cr.UID,
-		Controller:         ptr(true),
-		BlockOwnerDeletion: ptr(true),
-	}
+	// ----------------------
 
 	target := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            cr.Name,
-			Labels:          labels,
-			Annotations:     annotations,
-			OwnerReferences: []metav1.OwnerReference{ownerRef},
+			Name: cr.Name,
 		},
-		Rules: resultRules,
 	}
 
-	var existing rbacv1.ClusterRole
-	if err := r.Get(ctx, client.ObjectKey{Name: cr.Name}, &existing); err != nil {
-		if errors.IsNotFound(err) {
-			if err := r.Create(ctx, target); err != nil {
-				log.Error(err, "failed to create target ClusterRole")
-				return ctrl.Result{}, err
-			}
-			log.Info("created target ClusterRole", "rulesCount", len(resultRules))
-		} else {
-			log.Error(err, "failed to get existing target ClusterRole")
-			return ctrl.Result{}, err
+	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, target, func() error {
+		if err := controllerutil.SetControllerReference(&cr, target, r.Scheme); err != nil {
+			return err
 		}
-	} else {
-		target.ResourceVersion = existing.ResourceVersion
-		if err := r.Update(ctx, target); err != nil {
-			log.Error(err, "failed to update target ClusterRole")
-			return ctrl.Result{}, err
-		}
-		log.Info("updated target ClusterRole", "rulesCount", len(resultRules))
+		target.Labels = labels
+		target.Annotations = annotations
+		target.Rules = resultingRules
+		return nil
+	})
+	if err != nil {
+		log.Error(err, "Failed to reconcile target ClusterRole")
+		return ctrl.Result{}, err
 	}
+	log.Info("Reconciled target ClusterRole", "operation", result, "rulesCount", len(resultingRules))
 
-	cr.Status.RulesCount = int32(len(resultRules))
+	cr.Status.RulesCount = int32(len(resultingRules))
 	if err := r.Status().Update(ctx, &cr); err != nil {
-		log.Error(err, "failed to update status")
+		log.Error(err, "Failed to update status")
 		return ctrl.Result{}, err
 	}
 
@@ -172,8 +154,4 @@ func (r *ModifyClusterRoleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named("modifyclusterrole").
 		Owns(&rbacv1.ClusterRole{}).
 		Complete(r)
-}
-
-func ptr[T any](v T) *T {
-	return &v
 }
