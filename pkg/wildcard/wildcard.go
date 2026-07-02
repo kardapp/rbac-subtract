@@ -3,7 +3,6 @@ package wildcard
 import (
 	"errors"
 	"slices"
-	"sort"
 
 	"github.com/go-logr/logr"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -190,6 +189,6 @@ func dedupeSorted(existing, new []string) []string {
 			result = append(result, item)
 		}
 	}
-	sort.Strings(result)
+	slices.Sort(result)
 	return result
 }
