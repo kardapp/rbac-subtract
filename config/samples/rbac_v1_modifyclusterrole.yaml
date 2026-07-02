@@ -1,0 +1,9 @@
+apiVersion: rbac.kim.karolinska.se/v1
+kind: ModifyClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: rbac-subtract
+    app.kubernetes.io/managed-by: kustomize
+  name: modifyclusterrole-sample
+spec:
+  # TODO(user): Add fields here
