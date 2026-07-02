@@ -218,7 +218,6 @@ make run           # Run controller locally against current kubeconfig
 make docker-build  # Build container image
 make deploy        # Deploy CRD + controller to cluster
 make manifests     # Regenerate CRD and RBAC manifests from markers
-make generate      # Regenerate deepcopy code
 ```
 
 Requires Go >= 1.25.
