@@ -57,6 +57,12 @@ rules:
 - apiGroups:
   - rbac.kim.karolinska.se
   resources:
+  - modifyclusterroles/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - rbac.kim.karolinska.se
+  resources:
   - modifyclusterroles/status
   verbs:
   - get

@@ -43,6 +43,7 @@ type ModifyClusterRoleReconciler struct {
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=get;list;watch;create;update;patch;delete;escalate
 // +kubebuilder:rbac:groups=rbac.kim.karolinska.se,resources=modifyclusterroles,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=rbac.kim.karolinska.se,resources=modifyclusterroles/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=rbac.kim.karolinska.se,resources=modifyclusterroles/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
