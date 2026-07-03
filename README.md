@@ -291,6 +291,17 @@ Rules with `resourceNames` pass through unchanged regardless of wildcards.
 
 Rules containing `resourceNames` (restricting access to specific named resources) are preserved as-is in the output. Subtraction is skipped for these rules because flattening loses the name restriction, which would accidentally expand permissions.
 
+### Aggregated ClusterRoles (`aggregationRule`)
+
+If the target ClusterRole already exists and has an `.aggregationRule`, the controller strips it and takes full ownership of the rules. This is intentional: an aggregated ClusterRole is autofilled by the Kubernetes RBAC controller based on the `clusterRoleSelector` labels, which means any rules the operator writes would be overwritten on the next aggregation pass.
+
+When you point a `ModifyClusterRole` at a target name that matches a pre-existing aggregated ClusterRole:
+- The `aggregationRule` field is removed.
+- The operator's computed rules replace whatever rules existed before.
+- The target ClusterRole becomes a standalone (non-aggregated) role owned and managed entirely by the operator.
+
+If you need to subtract rules from an aggregated ClusterRole, create a new target name instead — the operator will create a fresh standalone ClusterRole derived from the source, leaving the original aggregated ClusterRole intact.
+
 ### `nonResourceURLs` not supported
 
 ClusterRole rules with `nonResourceURLs` (e.g. access to `/healthz`, `/version`) are dropped from the output. The subtraction logic only operates on `apiGroups` + `resources` + `verbs` tuples. Using `nonResourceURLs` in `removeRules` is also unsupported.

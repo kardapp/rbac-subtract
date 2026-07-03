@@ -88,6 +88,47 @@ var _ = Describe("ModifyClusterRole Controller", func() {
 			}))
 		})
 
+		It("strips existing AggregationRule from target ClusterRole", func() {
+			const aggTargetName = "test-agg-target"
+
+			target := &rbacv1.ClusterRole{
+				ObjectMeta: metav1.ObjectMeta{Name: aggTargetName},
+				AggregationRule: &rbacv1.AggregationRule{
+					ClusterRoleSelectors: []metav1.LabelSelector{
+						{MatchLabels: map[string]string{"rbac.example.com/aggregate-to-view": "true"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, target)).To(Succeed())
+
+			cr := &kimv1.ModifyClusterRole{
+				ObjectMeta: metav1.ObjectMeta{Name: aggTargetName},
+				Spec: kimv1.ModifyClusterRoleSpec{
+					ClusterRole: sourceName,
+					RemoveRules: []kimv1.RemoveRule{
+						{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"list"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+
+			reconciler := &ModifyClusterRoleReconciler{
+				Client:    k8sClient,
+				Discovery: &fakediscovery.FakeDiscovery{Fake: &testing.Fake{}},
+				Scheme:    k8sClient.Scheme(),
+			}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: aggTargetName}})
+			Expect(err).NotTo(HaveOccurred())
+
+			var updated rbacv1.ClusterRole
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: aggTargetName}, &updated)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updated.AggregationRule).To(BeNil())
+
+			_ = k8sClient.Delete(ctx, &kimv1.ModifyClusterRole{ObjectMeta: metav1.ObjectMeta{Name: aggTargetName}})
+			_ = k8sClient.Delete(ctx, &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: aggTargetName}})
+		})
+
 		It("handles missing source ClusterRole gracefully", func() {
 			cr := &kimv1.ModifyClusterRole{
 				ObjectMeta: metav1.ObjectMeta{Name: "no-source"},

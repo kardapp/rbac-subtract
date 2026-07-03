@@ -127,6 +127,10 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if err := controllerutil.SetControllerReference(&cr, target, r.Scheme); err != nil {
 			return err
 		}
+		if target.AggregationRule != nil {
+			logger.Info("The target ClusterRole contains a AggregationRule, Removing it")
+			target.AggregationRule = nil
+		}
 		target.Labels = labels
 		target.Annotations = annotations
 		target.Rules = resultingRules
