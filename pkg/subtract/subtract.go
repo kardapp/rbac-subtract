@@ -10,16 +10,13 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-// Matches checks whether a source permission matches a removal pattern.
-// '*' in the pattern acts as wildcard matching any value.
-func Matches(source, pattern Permission) bool {
+func matches(source, pattern Permission) bool {
 	return (pattern.APIGroup == source.APIGroup || pattern.APIGroup == "*") &&
 		(pattern.Resource == source.Resource || pattern.Resource == "*") &&
 		(pattern.Verb == source.Verb || pattern.Verb == "*")
 }
 
-// Flatten expands PolicyRule dicts into a set of Permission tuples.
-func Flatten(rules []rbacv1.PolicyRule) map[Permission]struct{} {
+func flatten(rules []rbacv1.PolicyRule) map[Permission]struct{} {
 	result := make(map[Permission]struct{})
 	for _, rule := range rules {
 		for _, apiGroup := range rule.APIGroups {
@@ -34,7 +31,7 @@ func Flatten(rules []rbacv1.PolicyRule) map[Permission]struct{} {
 }
 
 // A hard part to cognitivly understand here is that the key is a struct
-func Regroup(permissions map[Permission]struct{}) []rbacv1.PolicyRule {
+func regroup(permissions map[Permission]struct{}) []rbacv1.PolicyRule {
 	//    Step 1: collect verbs per resource
 	//   {apiGroup, resource, verb} tuples  →  groups[(apiGroup,resource)] = {verb, ...}
 	//
@@ -142,8 +139,8 @@ func Subtract(sourceRules, removeRules []rbacv1.PolicyRule, logger logr.Logger) 
 
 	log.V(1).Info("flattening rules", "sourceCount", len(concrete), "removeCount", len(removeRules))
 
-	source := Flatten(concrete)
-	removeFlat := Flatten(removeRules)
+	source := flatten(concrete)
+	removeFlat := flatten(removeRules)
 
 	log.V(1).Info("flattened", "sourceCount", len(source), "removeCount", len(removeFlat))
 
@@ -152,12 +149,13 @@ func Subtract(sourceRules, removeRules []rbacv1.PolicyRule, logger logr.Logger) 
 	type removal struct {
 		src, pattern Permission
 	}
+
 	var removedTuples []removal
 
 	for permission := range source {
 		var matching *Permission
 		for pattern := range removeFlat {
-			if Matches(permission, pattern) {
+			if matches(permission, pattern) {
 				p := pattern
 				matching = &p
 				break
@@ -186,11 +184,18 @@ func Subtract(sourceRules, removeRules []rbacv1.PolicyRule, logger logr.Logger) 
 
 	log.V(1).Info("remaining tuples", "count", len(remaining))
 
-	result := Regroup(remaining)
+	result := regroup(remaining)
 	log.V(1).Info("regrouped", "totalRules", len(result)+len(passThrough),
 		"subtractionRules", len(result), "passThrough", len(passThrough))
 
 	return append(result, passThrough...), nil
+}
+
+// Permission represents a single (apiGroup, resource, verb) tuple.
+type Permission struct {
+	APIGroup string
+	Resource string
+	Verb     string
 }
 
 func hasWildcard(apiGroups []string) bool {

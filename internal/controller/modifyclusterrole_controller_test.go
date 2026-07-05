@@ -129,7 +129,7 @@ var _ = Describe("ModifyClusterRole Controller", func() {
 			_ = k8sClient.Delete(ctx, &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: aggTargetName}})
 		})
 
-		It("handles missing source ClusterRole gracefully", func() {
+		It("reports missing source ClusterRole", func() {
 			cr := &kimv1.ModifyClusterRole{
 				ObjectMeta: metav1.ObjectMeta{Name: "no-source"},
 				Spec: kimv1.ModifyClusterRoleSpec{
@@ -151,7 +151,7 @@ var _ = Describe("ModifyClusterRole Controller", func() {
 			}
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "no-source"}})
-			Expect(err).NotTo(HaveOccurred())
+			Expect(err).To(HaveOccurred())
 
 			// Cleanup
 			_ = k8sClient.Delete(ctx, &kimv1.ModifyClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "no-source"}})
