@@ -58,7 +58,7 @@ func TestFlatten(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if diff := cmp.Diff(tt.want, Flatten(tt.rules)); diff != "" {
+			if diff := cmp.Diff(tt.want, flatten(tt.rules)); diff != "" {
 				t.Errorf("Flatten() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -105,7 +105,7 @@ func TestRegroup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if diff := cmp.Diff(tt.want, Regroup(tt.permissions), cmpOpts); diff != "" {
+			if diff := cmp.Diff(tt.want, regroup(tt.permissions), cmpOpts); diff != "" {
 				t.Errorf("Regroup() mismatch (-want +got):\n%s", diff)
 			}
 		})
