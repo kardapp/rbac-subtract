@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
@@ -68,7 +70,17 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err := r.Get(ctx, client.ObjectKey{Name: cr.Spec.ClusterRole}, &sourceRole); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Error(err, "Source ClusterRole not found")
-			return ctrl.Result{}, nil
+			meta.SetStatusCondition(&cr.Status.Conditions, metav1.Condition{
+				Type:               "Degraded",
+				Status:             metav1.ConditionTrue,
+				Reason:             "SourceNotFound",
+				Message:            fmt.Sprintf("Source ClusterRole %q was not found", cr.Spec.ClusterRole),
+				ObservedGeneration: cr.Generation,
+			})
+			if updateErr := r.Status().Update(ctx, &cr); updateErr != nil {
+				logger.Error(updateErr, "Failed to update status condition")
+			}
+			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, err
 	}
@@ -77,7 +89,17 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	expandedRules, hadWildcardAPI, err := wildcard.ExpandWildcards(r.Discovery, sourceRole.Rules, logger)
 	if err != nil {
 		logger.Error(err, "Failed to expand wildcards")
-		return ctrl.Result{}, nil
+		meta.SetStatusCondition(&cr.Status.Conditions, metav1.Condition{
+			Type:               "Degraded",
+			Status:             metav1.ConditionTrue,
+			Reason:             "WildcardExpansionFailed",
+			Message:            "Failed to expand wildcards in the source ClusterRole",
+			ObservedGeneration: cr.Generation,
+		})
+		if updateErr := r.Status().Update(ctx, &cr); updateErr != nil {
+			logger.Error(updateErr, "Failed to update status condition")
+		}
+		return ctrl.Result{}, err
 	}
 
 	// Because we created a custom type we need to make it to a rbacv1.PolicyRule
@@ -94,7 +116,17 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	resultingRules, err := subtract.Subtract(expandedRules, removeRules, logger)
 	if err != nil {
 		logger.Error(err, "subtraction failed")
-		return ctrl.Result{}, nil
+		meta.SetStatusCondition(&cr.Status.Conditions, metav1.Condition{
+			Type:               "Degraded",
+			Status:             metav1.ConditionTrue,
+			Reason:             "SubtractionFailed",
+			Message:            "Failed to subtract rules from the source ClusterRole",
+			ObservedGeneration: cr.Generation,
+		})
+		if updateErr := r.Status().Update(ctx, &cr); updateErr != nil {
+			logger.Error(updateErr, "Failed to update status condition")
+		}
+		return ctrl.Result{}, err
 	}
 	// ---------------
 
@@ -138,10 +170,34 @@ func (r *ModifyClusterRoleReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	})
 	if err != nil {
 		logger.Error(err, "Failed to reconcile target ClusterRole")
+		meta.SetStatusCondition(&cr.Status.Conditions, metav1.Condition{
+			Type:               "Degraded",
+			Status:             metav1.ConditionTrue,
+			Reason:             "CreateOrUpdateFailed",
+			Message:            "Failed to create or update the target ClusterRole",
+			ObservedGeneration: cr.Generation,
+		})
+		if updateErr := r.Status().Update(ctx, &cr); updateErr != nil {
+			logger.Error(updateErr, "Failed to update status condition")
+		}
 		return ctrl.Result{}, err
 	}
 	logger.Info("Reconciled target ClusterRole", "operation", result, "rulesCount", len(resultingRules))
 
+	meta.SetStatusCondition(&cr.Status.Conditions, metav1.Condition{
+		Type:               "Available",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Reconciled",
+		Message:            fmt.Sprintf("Target ClusterRole %q updated with %d rules", cr.Name, len(resultingRules)),
+		ObservedGeneration: cr.Generation,
+	})
+	meta.SetStatusCondition(&cr.Status.Conditions, metav1.Condition{
+		Type:               "Degraded",
+		Status:             metav1.ConditionFalse,
+		Reason:             "Reconciled",
+		Message:            "",
+		ObservedGeneration: cr.Generation,
+	})
 	cr.Status.RulesCount = int32(len(resultingRules))
 	if err := r.Status().Update(ctx, &cr); err != nil {
 		logger.Error(err, "Failed to update status")
